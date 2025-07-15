@@ -15,20 +15,23 @@ IFACE=$(ip route | awk '/default/ {print $5; exit}')
 
 echo "Viết cấu hình /etc/danted.conf..."
 cat > /etc/danted.conf <<EOF
-logoutput: /var/log/danted.log
-internal: \$IFACE port = 1080
-external: \$IFACE
+logoutput: syslog
+
+internal: 0.0.0.0 port = 1080
+external: eth0
+
 method: username
 user.notprivileged: nobody
+
 client pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
-    log: connect disconnect
-    method: username
+    log: connect disconnect error
 }
+
 socks pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
-    log: connect disconnect
-    method: username
+    log: connect disconnect error
+    command: connect
 }
 EOF
 
