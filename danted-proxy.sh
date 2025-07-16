@@ -54,5 +54,8 @@ mkswap /swapfile
 swapon /swapfile
 grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
+sudo systemctl restart danted
+sudo systemctl status danted
+
 echo "Hoàn thành! Kiểm tra trạng thái danted:"
 systemctl status danted --no-pager
