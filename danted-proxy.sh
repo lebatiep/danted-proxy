@@ -15,7 +15,7 @@ IFACE=$(ip route | awk '/default/ {print $5; exit}')
 
 echo "Viết cấu hình /etc/danted.conf..."
 cat > /etc/danted.conf <<EOF
-logoutput: /var/log/danted.log
+logoutput: syslog
 
 internal: 0.0.0.0 port = 1080
 external: eth0
