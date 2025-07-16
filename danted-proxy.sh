@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script tự động cài Dante SOCKS5 + user vip2k/111 + swap 2G
+# Script tự động cài Dante SOCKS5 + user vip2k/111 + swap 2G + auto-restart
 
 set -e
 
@@ -35,6 +35,14 @@ socks pass {
 }
 EOF
 
+echo "Cấu hình tự động restart danted khi bị kill..."
+mkdir -p /etc/systemd/system/danted.service.d
+cat > /etc/systemd/system/danted.service.d/override.conf <<EOF
+[Service]
+Restart=always
+RestartSec=5
+EOF
+
 echo "Khởi động lại, bật tự động và mở port..."
 systemctl daemon-reexec
 systemctl enable danted
@@ -50,7 +58,6 @@ mkswap /swapfile
 swapon /swapfile
 grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-# 🔁 Khởi động lại danted lần cuối
 systemctl restart danted
 
 echo "Hoàn thành! Kiểm tra trạng thái danted:"
