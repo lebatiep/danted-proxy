@@ -35,6 +35,10 @@ socks pass {
 }
 EOF
 
+sudo useradd vip2k
+echo 'vip2k:111' | sudo chpasswd
+
+
 echo "Khởi động lại, bật tự động và mở port..."
 systemctl daemon-reexec
 systemctl enable danted
