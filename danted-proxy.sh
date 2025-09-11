@@ -16,7 +16,7 @@ logoutput: syslog
 internal: 0.0.0.0 port = 1080
 external: ${IFACE}
 
-socksmethod: username
+socksmethod: none
 user.notprivileged: nobody
 
 client pass {
