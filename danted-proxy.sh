@@ -1,60 +1,114 @@
 #!/bin/bash
-# Script tự động cài Dante SOCKS5 + swap 2G + auto-restart
-
 set -e
 
-echo "Cài đặt dante-server, ufw..."
-apt update && apt install -y dante-server ufw
+echo "[1/9] Cập nhật hệ thống & cài đặt gói cần thiết..."
+apt update -y && apt upgrade -y
+apt install -y dante-server ufw net-tools logrotate
 
-echo "Xác định interface mạng ..."
-IFACE=$(ip route | awk '/default/ {print $5; exit}')
+echo "[2/9] Tạo swap 2GB..."
+if ! swapon --show | grep -q "swapfile"; then
+    fallocate -l 2G /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
+fi
 
-echo "Viết cấu hình /etc/danted.conf..."
+echo "[3/9] Xác định interface mạng..."
+IFACE=$(ip route | grep '^default' | awk '{print $5}')
+echo "Interface được phát hiện: $IFACE"
+
+echo "[4/9] Viết cấu hình /etc/danted.conf..."
 cat > /etc/danted.conf <<EOF
-logoutput: syslog
+logoutput: /var/log/danted.log
+internal: $IFACE port = 1080
+external: $IFACE
 
-internal: 0.0.0.0 port = 1080
-external: ${IFACE}
-
-socksmethod: none
+method: username none
+user.privileged: proxy
 user.notprivileged: nobody
 
+clientmethod: none
+socksmethod: none
+
 client pass {
-    from: 0.0.0.0/0 to: 0.0.0.0/0
+    from: 42.118.48.136/32 to: 0.0.0.0/0
     log: connect disconnect error
 }
 
-socks pass {
-    from: 0.0.0.0/0 to: 0.0.0.0/0
+client pass {
+    from: 183.80.56.6/32 to: 0.0.0.0/0
     log: connect disconnect error
-    command: connect
+}
+
+client block {
+    from: 0.0.0.0/0 to: 0.0.0.0/0
+    log: connect error
+}
+
+pass {
+    from: 42.118.48.136/32 to: 0.0.0.0/0
+    protocol: tcp udp
+}
+
+pass {
+    from: 183.80.56.6/32 to: 0.0.0.0/0
+    protocol: tcp udp
+}
+
+block {
+    from: 0.0.0.0/0 to: 0.0.0.0/0
 }
 EOF
 
-echo "Cấu hình tự động restart danted khi bị kill..."
+echo "[5/9] Tạo systemd service override để auto-restart..."
 mkdir -p /etc/systemd/system/danted.service.d
 cat > /etc/systemd/system/danted.service.d/override.conf <<EOF
 [Service]
 Restart=always
-RestartSec=5
+RestartSec=3
 EOF
 
-echo "Khởi động lại, bật tự động và mở port..."
+echo "[6/9] Cấu hình logrotate cho syslog & danted.log..."
+cat > /etc/logrotate.d/danted <<EOF
+/var/log/danted.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    create 640 root adm
+    postrotate
+        systemctl reload danted > /dev/null 2>&1 || true
+    endscript
+}
+EOF
+
+cat > /etc/logrotate.d/syslog-clean <<EOF
+/var/log/syslog {
+    daily
+    rotate 5
+    compress
+    missingok
+    notifempty
+    size 200M
+    create 640 syslog adm
+    postrotate
+        /usr/lib/rsyslog/rsyslog-rotate || true
+    endscript
+}
+EOF
+
+echo "[7/9] Mở port bằng UFW..."
+ufw allow 1080/tcp
+ufw allow 1080/udp
+ufw --force enable
+
+echo "[8/9] Reload & enable danted..."
 systemctl daemon-reexec
+systemctl daemon-reload
 systemctl enable danted
 systemctl restart danted
-ufw allow 1080/tcp
 
-echo "Tạo swap 2GB..."
-swapoff -a || true
-rm -f /swapfile || true
-dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
-chmod 600 /swapfile
-mkswap /swapfile
-swapon /swapfile
-grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
-
-systemctl restart danted
-
-echo "Hoàn thành! Kiểm tra trạng thái danted:"
-systemctl status danted --no-pager
+echo "[9/9] Hoàn thành! Kiểm tra trạng thái danted:"
+systemctl status danted --no-pager -l
