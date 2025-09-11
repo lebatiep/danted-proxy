@@ -1,14 +1,10 @@
 #!/bin/bash
-# Script tự động cài Dante SOCKS5 + user vip2k/111 + swap 2G + auto-restart
+# Script tự động cài Dante SOCKS5 + swap 2G + auto-restart
 
 set -e
 
 echo "Cài đặt dante-server, ufw..."
 apt update && apt install -y dante-server ufw
-
-echo "Tạo user proxy vip2k..."
-useradd -M -s /usr/sbin/nologin vip2k || true
-echo "vip2k:111" | chpasswd
 
 echo "Xác định interface mạng ..."
 IFACE=$(ip route | awk '/default/ {print $5; exit}')
@@ -20,7 +16,7 @@ logoutput: syslog
 internal: 0.0.0.0 port = 1080
 external: ${IFACE}
 
-method: username
+socksmethod: username
 user.notprivileged: nobody
 
 client pass {
