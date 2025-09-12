@@ -102,7 +102,10 @@ EOF
 echo "[7/9] Mở port bằng UFW..."
 ufw allow 1080/tcp
 ufw allow 1080/udp
+ufw allow 22/tcp
 ufw --force enable
+ufw reload
+
 
 echo "[8/9] Reload & enable danted..."
 systemctl daemon-reexec
@@ -111,4 +114,5 @@ systemctl enable danted
 systemctl restart danted
 
 echo "[9/9] Hoàn thành! Kiểm tra trạng thái danted:"
+ufw status
 systemctl status danted --no-pager -l
