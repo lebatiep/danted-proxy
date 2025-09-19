@@ -32,7 +32,7 @@ clientmethod: none
 socksmethod: none
 
 client pass {
-    from: 42.116.197.137/32 to: 0.0.0.0/0
+    from: 113.23.43.74/32 to: 0.0.0.0/0
     log: connect disconnect error
 }
 
@@ -47,7 +47,7 @@ client block {
 }
 
 pass {
-    from: 42.116.197.137/32 to: 0.0.0.0/0
+    from: 113.23.43.74/32 to: 0.0.0.0/0
     protocol: tcp udp
 }
 
