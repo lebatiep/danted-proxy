@@ -32,12 +32,12 @@ clientmethod: none
 socksmethod: none
 
 client pass {
-    from: 113.23.43.74/32 to: 0.0.0.0/0
+    from: nhahqv23jvtr.duckdns.org/32 to: 0.0.0.0/0
     log: connect disconnect error
 }
 
 client pass {
-    from: 183.80.56.6/32 to: 0.0.0.0/0
+    from: nhahqv6349fal342hcx23.duckdns.org/32 to: 0.0.0.0/0
     log: connect disconnect error
 }
 
@@ -47,12 +47,12 @@ client block {
 }
 
 pass {
-    from: 113.23.43.74/32 to: 0.0.0.0/0
+    from: nhahqv23jvtr.duckdns.org/32 to: 0.0.0.0/0
     protocol: tcp udp
 }
 
 pass {
-    from: 183.80.56.6/32 to: 0.0.0.0/0
+    from: nhahqv6349fal342hcx23.duckdns.org/32 to: 0.0.0.0/0
     protocol: tcp udp
 }
 
