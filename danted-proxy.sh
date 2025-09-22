@@ -1,118 +1,139 @@
 #!/bin/bash
 set -e
 
-echo "[1/9] Cập nhật hệ thống & cài đặt gói cần thiết..."
-apt update -y && apt upgrade -y
-apt install -y dante-server ufw net-tools logrotate
+echo "🚀 Bắt đầu cài đặt Dante SOCKS5 Proxy..."
 
-echo "[2/9] Tạo swap 2GB..."
-if ! swapon --show | grep -q "swapfile"; then
-    fallocate -l 2G /swapfile
-    chmod 600 /swapfile
-    mkswap /swapfile
-    swapon /swapfile
-    echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
+# ==========================
+# 1. Cập nhật hệ thống
+# ==========================
+echo "[1/10] Cập nhật hệ thống & cài đặt gói cần thiết..."
+apt update -y && apt upgrade -y
+apt install -y dante-server dnsutils curl cron nano ufw logrotate
+
+# ==========================
+# 2. Tạo swap 2GB
+# ==========================
+echo "[2/10] Tạo swap 2GB..."
+SWAPFILE="/swapfile"
+if [ ! -f $SWAPFILE ]; then
+    fallocate -l 2G $SWAPFILE
+    chmod 600 $SWAPFILE
+    mkswap $SWAPFILE
+    swapon $SWAPFILE
+    echo "$SWAPFILE none swap sw 0 0" >> /etc/fstab
+else
+    echo "Swap đã tồn tại, bỏ qua."
 fi
 
-echo "[3/9] Xác định interface mạng..."
-IFACE=$(ip route | grep '^default' | awk '{print $5}')
-echo "Interface được phát hiện: $IFACE"
+# ==========================
+# 3. Xác định interface mạng
+# ==========================
+echo "[3/10] Xác định interface mạng..."
+IFACE=$(ip route get 8.8.8.8 | awk '{print $5; exit}')
+echo "Interface mạng: $IFACE"
 
-echo "[4/9] Viết cấu hình /etc/danted.conf..."
+# ==========================
+# 4. Viết cấu hình Dante ban đầu
+# ==========================
+echo "[4/10] Viết cấu hình /etc/danted.conf..."
 cat > /etc/danted.conf <<EOF
 logoutput: /var/log/danted.log
 internal: $IFACE port = 1080
 external: $IFACE
 
-method: username none
+socksmethod: none
 user.privileged: proxy
 user.notprivileged: nobody
 
-clientmethod: none
-socksmethod: none
-
-client pass {
-    from: nhahqv23jvtr.duckdns.org/32 to: 0.0.0.0/0
-    log: connect disconnect error
-}
-
-client pass {
-    from: nhahqv6349fal342hcx23.duckdns.org/32 to: 0.0.0.0/0
-    log: connect disconnect error
-}
-
-client block {
-    from: 0.0.0.0/0 to: 0.0.0.0/0
-    log: connect error
-}
-
-pass {
-    from: nhahqv23jvtr.duckdns.org/32 to: 0.0.0.0/0
-    protocol: tcp udp
-}
-
-pass {
-    from: nhahqv6349fal342hcx23.duckdns.org/32 to: 0.0.0.0/0
-    protocol: tcp udp
-}
-
+# Chặn mặc định
 block {
     from: 0.0.0.0/0 to: 0.0.0.0/0
 }
 EOF
 
-echo "[5/9] Tạo systemd service override để auto-restart..."
+# ==========================
+# 5. Tạo template & script cập nhật
+# ==========================
+echo "[5/10] Tạo template và script cập nhật..."
+
+cp /etc/danted.conf /etc/danted.conf.template
+
+cat > /usr/local/bin/update-danted.sh <<'EOL'
+#!/bin/bash
+DOMAINS=("nhahqv23jvtr.duckdns.org" "nhahqv6349fal342hcx23.duckdns.org")
+TEMPLATE="/etc/danted.conf.template"
+CONFIG="/etc/danted.conf"
+
+cp "$TEMPLATE" "$CONFIG"
+
+for DOMAIN in "${DOMAINS[@]}"; do
+    IP=$(dig +short $DOMAIN @8.8.8.8 | tail -n 1)
+    if [[ -n "$IP" ]]; then
+        echo "Cập nhật $DOMAIN -> $IP"
+        echo "client pass { from: $IP/32 to: 0.0.0.0/0 }" >> "$CONFIG"
+        echo "socks pass { from: $IP/32 to: 0.0.0.0/0 }" >> "$CONFIG"
+    else
+        echo "⚠️ Không lấy được IP từ $DOMAIN"
+    fi
+done
+
+systemctl restart danted
+EOL
+
+chmod +x /usr/local/bin/update-danted.sh
+
+# ==========================
+# 6. Cron job auto update
+# ==========================
+echo "[6/10] Thêm cron job auto update mỗi 5 phút..."
+(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/update-danted.sh") | crontab -
+
+# ==========================
+# 7. Systemd override để auto-restart
+# ==========================
+echo "[7/10] Tạo systemd override cho danted..."
 mkdir -p /etc/systemd/system/danted.service.d
 cat > /etc/systemd/system/danted.service.d/override.conf <<EOF
 [Service]
 Restart=always
 RestartSec=3
 EOF
+systemctl daemon-reexec
 
-echo "[6/9] Cấu hình logrotate cho syslog & danted.log..."
+# ==========================
+# 8. Logrotate
+# ==========================
+echo "[8/10] Cấu hình logrotate..."
 cat > /etc/logrotate.d/danted <<EOF
 /var/log/danted.log {
     daily
+    missingok
     rotate 7
     compress
-    missingok
+    delaycompress
     notifempty
-    create 640 root adm
+    create 640 proxy adm
     postrotate
-        systemctl reload danted > /dev/null 2>&1 || true
+        systemctl reload danted >/dev/null 2>&1 || true
     endscript
 }
 EOF
 
-cat > /etc/logrotate.d/syslog-clean <<EOF
-/var/log/syslog {
-    daily
-    rotate 5
-    compress
-    missingok
-    notifempty
-    size 200M
-    create 640 syslog adm
-    postrotate
-        /usr/lib/rsyslog/rsyslog-rotate || true
-    endscript
-}
-EOF
-
-echo "[7/9] Mở port bằng UFW..."
-ufw allow 1080/tcp
-ufw allow 1080/udp
+# ==========================
+# 9. Mở port bằng UFW
+# ==========================
+echo "[9/10] Mở port UFW (22 và 1080)..."
 ufw allow 22/tcp
+ufw allow 1080/tcp
 ufw --force enable
-ufw reload
 
-
-echo "[8/9] Reload & enable danted..."
-systemctl daemon-reexec
-systemctl daemon-reload
+# ==========================
+# 10. Reload & enable danted
+# ==========================
+echo "[10/10] Hoàn tất! Khởi động dịch vụ..."
+/usr/local/bin/update-danted.sh
 systemctl enable danted
 systemctl restart danted
 
-echo "[9/9] Hoàn thành! Kiểm tra trạng thái danted:"
-ufw status
-systemctl status danted --no-pager -l
+echo "✅ Hoàn thành! Kiểm tra trạng thái:"
+systemctl status danted --no-pager
